@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f3057">
+<title>SomLog Lite</title>
+<style>
+  :root{
+    --bg:#0f1722; --panel:#17212e; --panel2:#1e2b3a; --line:#2a3a4d;
+    --txt:#e8eef5; --sub:#9fb2c6; --accent:#2e86de; --accent2:#1f6fc4;
+    --warn:#e67e22; --danger:#e74c3c; --ok:#27ae60;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif;
+    overscroll-behavior:none}
+  body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  .screen{display:none;min-height:100vh;padding:14px}
+  .screen.active{display:block}
+  #s-lock.active{display:flex;flex-direction:column;justify-content:center;min-height:100vh}
+  h1{font-size:20px;margin:6px 0 14px}
+  h2{font-size:15px;color:var(--sub);margin:18px 0 8px;font-weight:600}
+  label{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px}
+  input,select,textarea{width:100%;padding:12px;font-size:16px;background:var(--panel2);
+    border:1px solid var(--line);border-radius:10px;color:var(--txt)}
+  textarea{min-height:60px;resize:vertical}
+  .btn{display:block;width:100%;padding:15px;font-size:17px;font-weight:700;border:none;
+    border-radius:12px;background:var(--accent);color:#fff;margin-top:14px;cursor:pointer}
+  .btn:active{background:var(--accent2)}
+  .btn.ghost{background:var(--panel2);border:1px solid var(--line);color:var(--txt);font-weight:600}
+  .btn.danger{background:var(--danger)}
+  .btn.warn{background:var(--warn)}
+  .btn.small{padding:11px;font-size:14px;margin-top:0}
+  .row{display:flex;gap:8px}
+  .row>*{flex:1}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+  .muted{color:var(--sub);font-size:13px}
+
+  /* === recording header === */
+  .topbar{position:sticky;top:0;z-index:5;background:var(--bg);padding:6px 0 10px;
+    border-bottom:1px solid var(--line);margin:-14px -14px 12px;padding-left:14px;padding-right:14px}
+  .clocks{display:flex;justify-content:space-between;align-items:center}
+  .elapsed{font-size:15px;color:var(--sub)}
+  .elapsed b{color:var(--txt);font-size:22px;font-variant-numeric:tabular-nums}
+  .next{text-align:right}
+  .next .big{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
+  .next.alert .big{color:var(--warn)}
+  .ptitle{font-size:14px;color:var(--sub);margin-top:4px}
+
+  /* camera */
+  .camwrap{position:relative;background:#000;border-radius:14px;overflow:hidden;margin-bottom:10px;aspect-ratio:4/3}
+  video{width:100%;height:100%;object-fit:cover;display:block}
+  .camoff{display:flex;align-items:center;justify-content:center;height:100%;color:#6b7d90;font-size:14px;text-align:center;padding:20px}
+  .shutter{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);
+    width:66px;height:66px;border-radius:50%;background:#fff;border:5px solid rgba(255,255,255,.4);cursor:pointer}
+  .shutter:active{transform:translateX(-50%) scale(.92)}
+
+  /* capture-due overlay banner */
+  .duebanner{display:none;background:var(--warn);color:#fff;padding:12px;border-radius:12px;
+    text-align:center;font-weight:800;font-size:17px;margin-bottom:10px;animation:pulse 1s infinite}
+  .duebanner.show{display:block}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
+
+  /* event buttons */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .ev{padding:14px 6px;font-size:14px;font-weight:700;border:1px solid var(--line);
+    border-radius:11px;background:var(--panel2);color:var(--txt);cursor:pointer;text-align:center}
+  .ev:active{background:var(--accent);border-color:var(--accent)}
+  .ev.drug{background:#243447}
+
+  /* timeline */
+  .tl{margin-top:6px}
+  .item{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);align-items:flex-start}
+  .item .t{font-variant-numeric:tabular-nums;color:var(--sub);font-size:13px;min-width:46px;padding-top:2px}
+  .item .c{flex:1;font-size:15px}
+  .item .c .det{color:var(--sub);font-size:13px}
+  .item img{width:54px;height:42px;object-fit:cover;border-radius:6px}
+  .item .del{color:var(--danger);font-size:12px;background:none;border:none;padding:4px}
+  .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:6px;margin-right:6px;vertical-align:middle}
+  .tag.photo{background:#2c4a63}.tag.drug{background:#3a5a2c}.tag.event{background:#4a3a63}.tag.note{background:#5a4a2c}
+
+  /* modal */
+  .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20;align-items:flex-end}
+  .modal.show{display:flex}
+  .sheet{background:var(--panel);width:100%;border-radius:18px 18px 0 0;padding:18px;max-height:88vh;overflow:auto}
+  .sheet h3{margin:0 0 6px;font-size:18px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  .chip{padding:9px 14px;border-radius:20px;background:var(--panel2);border:1px solid var(--line);font-size:14px;cursor:pointer}
+  .chip.on{background:var(--accent);border-color:var(--accent)}
+  .toast{position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:#000;color:#fff;
+    padding:10px 18px;border-radius:24px;font-size:14px;z-index:40;opacity:0;transition:.2s;pointer-events:none}
+  .toast.show{opacity:.92}
+  .hint{font-size:12px;color:var(--sub);line-height:1.6}
+</style>
+</head>
+<body>
+
+<!-- ============ LOCK SCREEN ============ -->
+<section id="s-lock" class="screen active">
+  <h1 style="text-align:center">🔒 SomLog Lite</h1>
+  <div class="card" style="max-width:340px;margin:0 auto;width:100%">
+    <label style="text-align:center">パスコードを入力してください</label>
+    <input id="lock-input" type="password" inputmode="numeric" autocomplete="off"
+      style="text-align:center;font-size:28px;letter-spacing:8px" maxlength="8"
+      onkeydown="if(event.key==='Enter')tryUnlock()">
+    <div id="lock-err" class="muted" style="text-align:center;color:var(--danger);min-height:18px;margin-top:6px"></div>
+    <button class="btn" onclick="tryUnlock()">解錠</button>
+  </div>
+</section>
+
+<!-- ============ START SCREEN ============ -->
+<section id="s-start" class="screen">
+  <h1>🐾 SomLog Lite</h1>
+  <div class="card">
+    <div class="muted">廉価版・スマホ記録（写真は端末内に保存）</div>
+  </div>
+  <div id="resumeBox" class="card" style="display:none">
+    <b id="resumeTitle"></b>
+    <div class="muted" id="resumeInfo"></div>
+    <button class="btn" onclick="resumeCase()">記録を再開する</button>
+    <button class="btn ghost small" style="margin-top:8px" onclick="discardCase()">破棄して新規</button>
+  </div>
+  <div id="newBox">
+    <label>患者名</label><input id="f-name" placeholder="例）ポチ">
+    <div class="row">
+      <div><label>動物種</label>
+        <select id="f-species"><option>犬</option><option>猫</option><option>ウサギ</option><option>フェレット</option><option>その他</option></select>
+      </div>
+      <div><label>体重 (kg)</label><input id="f-weight" type="number" inputmode="decimal" step="0.01" placeholder="例）4.2"></div>
+    </div>
+    <label>術式 / 処置</label><input id="f-proc" placeholder="例）避妊手術">
+    <label>担当</label><input id="f-staff" placeholder="任意">
+    <label>撮影間隔</label>
+    <select id="f-interval"><option value="300">5分ごと</option><option value="600">10分ごと</option><option value="180">3分ごと</option><option value="60">1分ごと</option></select>
+    <label>写真の画質（容量）</label>
+    <select id="f-quality">
+      <option value="low">低（最小・推奨）</option>
+      <option value="mid">中</option>
+      <option value="high">高（数値くっきり）</option>
+    </select>
+    <button class="btn" onclick="startCase()">麻酔記録を開始</button>
+  </div>
+</section>
+
+<!-- ============ RECORD SCREEN ============ -->
+<section id="s-rec" class="screen">
+  <div class="topbar">
+    <div class="clocks">
+      <div class="elapsed">経過<br><b id="elapsed">0:00</b></div>
+      <div class="next" id="nextWrap">
+        <div class="muted" style="font-size:12px">次の撮影まで</div>
+        <div class="big" id="countdown">5:00</div>
+      </div>
+    </div>
+    <div class="ptitle" id="ptitle">—</div>
+  </div>
+
+  <div class="duebanner" id="dueBanner">📸 撮影タイミングです — モニターを写してシャッターを押してください</div>
+
+  <div class="camwrap">
+    <video id="video" playsinline muted></video>
+    <div class="camoff" id="camoff">カメラ未起動<br>下のボタンで開始してください</div>
+    <div class="shutter" id="shutterBtn" style="display:none" onclick="capturePhoto()"></div>
+  </div>
+  <div class="row">
+    <button class="btn ghost small" id="camBtn" onclick="toggleCamera()">📷 カメラを起動</button>
+    <button class="btn ghost small" onclick="switchCamera()">🔄 内/外切替</button>
+  </div>
+
+  <h2>イベント記録</h2>
+  <div class="grid" id="eventGrid"></div>
+
+  <h2>投薬</h2>
+  <div class="grid" id="drugGrid"></div>
+
+  <button class="btn ghost" onclick="openNote()">📝 自由メモを追加</button>
+
+  <h2>記録一覧 <span class="muted" id="counts"></span></h2>
+  <div class="tl" id="timeline"></div>
+
+  <button class="btn warn" style="margin-top:18px" onclick="finishCase()">⏹ 記録を終了して書き出し</button>
+  <div class="hint" style="margin-top:8px">※ アプリを閉じる/画面ロックすると撮影通知は止まります。スマホはモニターに向けて画面ONのままにしてください。</div>
+</section>
+
+<!-- ============ EXPORT SCREEN ============ -->
+<section id="s-done" class="screen">
+  <h1>記録の書き出し</h1>
+  <div class="card">
+    <div id="doneInfo"></div>
+  </div>
+  <button class="btn" onclick="downloadZip()">📦 写真ZIPをダウンロード</button>
+  <button class="btn ghost" onclick="downloadRecords()">📄 記録（CSV/テキスト）をダウンロード</button>
+  <button class="btn ghost" onclick="backToRec()">← 記録画面へ戻る（追記する）</button>
+  <button class="btn danger" style="margin-top:24px" onclick="deleteAndNew()">🗑 この症例を削除して新規開始</button>
+  <div class="hint" style="margin-top:10px">ZIP内に写真（連番＋時刻）と records.csv が入ります。ダウンロード後にカルテへ添付・保管してください。削除するまでは端末内に残ります。</div>
+</section>
+
+<!-- ============ DRUG MODAL ============ -->
+<div class="modal" id="drugModal">
+  <div class="sheet">
+    <h3 id="drugTitle">投薬</h3>
+    <div class="row">
+      <div><label>用量</label><input id="d-dose" type="number" inputmode="decimal" step="0.001"></div>
+      <div><label>単位</label><input id="d-unit" readonly></div>
+    </div>
+    <label>投与経路</label>
+    <div class="chips" id="routeChips"></div>
+    <label>メモ（任意）</label><input id="d-memo" placeholder="">
+    <button class="btn" onclick="saveDrug()">記録する</button>
+    <button class="btn ghost small" style="margin-top:8px" onclick="closeModal('drugModal')">キャンセル</button>
+  </div>
+</div>
+
+<!-- ============ NOTE MODAL ============ -->
+<div class="modal" id="noteModal">
+  <div class="sheet">
+    <h3>自由メモ</h3>
+    <textarea id="n-text" placeholder="体位変換 右下→左下 / 出血少量 など"></textarea>
+    <button class="btn" onclick="saveNote()">記録する</button>
+    <button class="btn ghost small" style="margin-top:8px" onclick="closeModal('noteModal')">キャンセル</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ====================== パスコード錠 ======================
+   LOCK_HASH = パスコードのSHA-256。空文字なら錠なし。
+   変更時は新しいコードのSHA-256ハッシュを下に入れてください。 */
+const LOCK_HASH="ed946f65d2c785d90e827c5ffd879ce3b49c68d4c88013074176a7e73bc58bcf";
+async function sha256(s){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');}
+async function tryUnlock(){
+  const v=document.getElementById('lock-input').value;
+  const h=await sha256(v);
+  if(h===LOCK_HASH){ sessionStorage.setItem('unlocked','1'); show('s-start'); afterUnlock(); }
+  else{ document.getElementById('lock-err').textContent='パスコードが違います'; document.getElementById('lock-input').value=''; }
+}
+function gateInit(){
+  if(!LOCK_HASH || LOCK_HASH==='__'+'LOCK_HASH__' || sessionStorage.getItem('unlocked')==='1'){
+    show('s-start'); afterUnlock();
+  }else{ show('s-lock'); setTimeout(()=>document.getElementById('lock-input').focus(),200); }
+}
+
+/* ====================== データ定義 ====================== */
+const EVENTS = ["前投与薬","導入薬","挿管","局所麻酔","抗菌薬","手術開始","体位変換","縫合","手術終了","抜管","アチパメゾール","帰舎"];
+const DRUGS = [
+ {n:"フェンタニル",u:"μg/kg",d:2.0,r:"IV,IM,SC,CRI"},
+ {n:"プロポフォール",u:"mg/kg",d:1.0,r:"IV,IM,SC"},
+ {n:"ブトルファノール",u:"mg/kg",d:0.1,r:"IV,IM,SC"},
+ {n:"アトロピン",u:"µg/kg",d:0.025,r:"IV,IM,SC"},
+ {n:"エフェドリン",u:"µg/kg",d:0.05,r:"IV,IM,SC"},
+ {n:"ニカルジピン",u:"µg/kg",d:5.0,r:"IV,IM,SC,CRI"},
+ {n:"メデトミジン",u:"µg/kg",d:5.0,r:"IV,IM,SC,CRI"},
+ {n:"ノルアドレナリン",u:"μg/kg/min",d:0.1,r:"IV,IM,SC,CRI"},
+ {n:"レミフェンタニル",u:"μg/kg/hr",d:0.1,r:"IV,IM,SC,CRI"},
+];
+const QUALITY = { low:{w:720,q:0.4}, mid:{w:1000,q:0.55}, high:{w:1400,q:0.7} };
+
+/* ====================== 状態 ====================== */
+let CASE=null;          // {id, name, species, weight, proc, staff, startedAt, interval, quality}
+let EVT=[];             // [{t, kind:'event'|'drug'|'note'|'photo', label, detail, photoId}]
+let timerId=null, nextCaptureAt=0, stream=null, facing='environment', wakeLock=null;
+let pendingDrug=null, pendingRoute=null;
+
+/* ====================== IndexedDB（写真Blob） ====================== */
+let db=null;
+function openDB(){return new Promise((res,rej)=>{
+  const r=indexedDB.open('somlog-lite',1);
+  r.onupgradeneeded=e=>{const d=e.target.result;
+    if(!d.objectStoreNames.contains('photos'))d.createObjectStore('photos',{keyPath:'id'});
+    if(!d.objectStoreNames.contains('meta'))d.createObjectStore('meta',{keyPath:'k'});};
+  r.onsuccess=e=>{db=e.target.result;res();};
+  r.onerror=e=>rej(e);
+});}
+function idbPut(store,val){return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).put(val);tx.oncomplete=res;tx.onerror=rej;});}
+function idbGet(store,key){return new Promise((res,rej)=>{const tx=db.transaction(store,'readonly');const rq=tx.objectStore(store).get(key);rq.onsuccess=()=>res(rq.result);rq.onerror=rej;});}
+function idbAll(store){return new Promise((res,rej)=>{const tx=db.transaction(store,'readonly');const rq=tx.objectStore(store).getAll();rq.onsuccess=()=>res(rq.result);rq.onerror=rej;});}
+function idbClear(store){return new Promise((res,rej)=>{const tx=db.transaction(store,'readwrite');tx.objectStore(store).clear();tx.oncomplete=res;tx.onerror=rej;});}
+
+/* ====================== 永続化（症例＋イベント） ====================== */
+async function persist(){ await idbPut('meta',{k:'current',CASE,EVT}); }
+async function loadPersisted(){ return await idbGet('meta','current'); }
+
+/* ====================== 画面遷移 ====================== */
+function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0);}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1600);}
+
+/* ====================== 起動 ====================== */
+(async function init(){
+  await openDB();
+  buildButtons();
+  const saved=await loadPersisted();
+  if(saved&&saved.CASE){
+    document.getElementById('resumeBox').style.display='block';
+    document.getElementById('newBox').style.display='none';
+    document.getElementById('resumeTitle').textContent='前回の記録が残っています';
+    const c=saved.CASE;
+    document.getElementById('resumeInfo').textContent=`${c.name||'(無名)'} / ${c.species} ${c.weight||''}kg / ${c.proc||''}  ・記録${(saved.EVT||[]).length}件`;
+    window._saved=saved;
+  }
+  gateInit();
+})();
+function afterUnlock(){ /* 解錠後フック（必要なら拡張） */ }
+
+function buildButtons(){
+  const eg=document.getElementById('eventGrid');
+  eg.innerHTML=EVENTS.map(e=>`<button class="ev" onclick="addEvent('${e}')">${e}</button>`).join('');
+  const dg=document.getElementById('drugGrid');
+  dg.innerHTML=DRUGS.map((d,i)=>`<button class="ev drug" onclick="openDrug(${i})">${d.n}</button>`).join('');
+}
+
+/* ====================== 症例開始 ====================== */
+function startCase(){
+  const name=document.getElementById('f-name').value.trim();
+  CASE={
+    id:'case_'+fmtStamp(new Date()),
+    name, species:document.getElementById('f-species').value,
+    weight:document.getElementById('f-weight').value,
+    proc:document.getElementById('f-proc').value.trim(),
+    staff:document.getElementById('f-staff').value.trim(),
+    startedAt:Date.now(),
+    interval:parseInt(document.getElementById('f-interval').value,10),
+    quality:document.getElementById('f-quality').value
+  };
+  EVT=[];
+  enterRec();
+  persist();
+}
+function resumeCase(){ CASE=window._saved.CASE; EVT=window._saved.EVT||[]; enterRec(); }
+async function discardCase(){ await idbClear('photos'); await idbClear('meta'); location.reload(); }
+
+function enterRec(){
+  document.getElementById('ptitle').textContent=`${CASE.name||'(無名)'} ・ ${CASE.species} ${CASE.weight||''}kg ・ ${CASE.proc||''}`;
+  show('s-rec');
+  nextCaptureAt=Date.now()+CASE.interval*1000;
+  renderTimeline();
+  startTimer();
+  requestWakeLock();
+}
+
+/* ====================== タイマー＆撮影通知 ====================== */
+function startTimer(){
+  clearInterval(timerId);
+  timerId=setInterval(tick,1000);
+  tick();
+}
+function tick(){
+  const now=Date.now();
+  const el=Math.floor((now-CASE.startedAt)/1000);
+  document.getElementById('elapsed').textContent=fmtDur(el);
+  let remain=Math.round((nextCaptureAt-now)/1000);
+  const nw=document.getElementById('nextWrap');
+  const banner=document.getElementById('dueBanner');
+  if(remain<=0){
+    document.getElementById('countdown').textContent='0:00';
+    nw.classList.add('alert');
+    if(!banner.classList.contains('show')){ banner.classList.add('show'); alarm(); }
+    // 未撮影が続くと20秒ごとに再通知
+    if(remain%20===0) alarm();
+  }else{
+    document.getElementById('countdown').textContent=fmtDur(remain);
+    nw.classList.remove('alert');
+    banner.classList.remove('show');
+  }
+}
+function alarm(){
+  try{navigator.vibrate&&navigator.vibrate([200,100,200]);}catch(e){}
+  beep();
+}
+let audioCtx=null;
+function beep(){
+  try{
+    audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+    o.connect(g);g.connect(audioCtx.destination);
+    o.type='sine';o.frequency.value=880;
+    g.gain.setValueAtTime(0.001,audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.4,audioCtx.currentTime+0.02);
+    g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.5);
+    o.start();o.stop(audioCtx.currentTime+0.5);
+  }catch(e){}
+}
+
+/* ====================== カメラ ====================== */
+async function toggleCamera(){
+  if(stream){ stopCamera(); return; }
+  await startCamera();
+}
+async function startCamera(){
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing},audio:false});
+    const v=document.getElementById('video');
+    v.srcObject=stream; await v.play();
+    document.getElementById('camoff').style.display='none';
+    document.getElementById('shutterBtn').style.display='block';
+    document.getElementById('camBtn').textContent='⏹ カメラ停止';
+    if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();
+  }catch(e){ toast('カメラを起動できません: '+e.message); }
+}
+function stopCamera(){
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  document.getElementById('camoff').style.display='flex';
+  document.getElementById('shutterBtn').style.display='none';
+  document.getElementById('camBtn').textContent='📷 カメラを起動';
+}
+async function switchCamera(){ facing=(facing==='environment')?'user':'environment'; if(stream){stopCamera();await startCamera();} }
+
+async function capturePhoto(){
+  if(!stream){ toast('先にカメラを起動してください'); await startCamera(); return; }
+  const v=document.getElementById('video');
+  const cfg=QUALITY[CASE.quality]||QUALITY.low;
+  const ratio=v.videoHeight/v.videoWidth||0.75;
+  const w=Math.min(cfg.w,v.videoWidth||cfg.w), h=Math.round(w*ratio);
+  const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+  cv.getContext('2d').drawImage(v,0,0,w,h);
+  const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',cfg.q));
+  const t=Date.now();
+  const id='p_'+t;
+  await idbPut('photos',{id,blob,t});
+  EVT.push({t,kind:'photo',label:'撮影',photoId:id});
+  nextCaptureAt=Date.now()+CASE.interval*1000;
+  document.getElementById('dueBanner').classList.remove('show');
+  await persist(); renderTimeline();
+  toast('📸 保存しました ('+Math.round(blob.size/1024)+'KB)');
+}
+
+/* ====================== イベント・投薬・メモ ====================== */
+function addEvent(label){
+  EVT.push({t:Date.now(),kind:'event',label});
+  persist();renderTimeline();toast('記録: '+label);
+}
+function openDrug(i){
+  pendingDrug=DRUGS[i];
+  document.getElementById('drugTitle').textContent='投薬：'+pendingDrug.n;
+  document.getElementById('d-dose').value=pendingDrug.d;
+  document.getElementById('d-unit').value=pendingDrug.u;
+  document.getElementById('d-memo').value='';
+  const routes=pendingDrug.r.split(',');
+  pendingRoute=routes[0];
+  document.getElementById('routeChips').innerHTML=routes.map(r=>`<span class="chip ${r===pendingRoute?'on':''}" onclick="pickRoute(this,'${r}')">${r}</span>`).join('');
+  openModal('drugModal');
+}
+function pickRoute(el,r){pendingRoute=r;document.querySelectorAll('#routeChips .chip').forEach(c=>c.classList.remove('on'));el.classList.add('on');}
+function saveDrug(){
+  const dose=document.getElementById('d-dose').value;
+  const memo=document.getElementById('d-memo').value.trim();
+  let det=`${dose} ${pendingDrug.u} ${pendingRoute}`+(memo?` / ${memo}`:'');
+  EVT.push({t:Date.now(),kind:'drug',label:pendingDrug.n,detail:det});
+  closeModal('drugModal');persist();renderTimeline();toast('記録: '+pendingDrug.n);
+}
+function openNote(){document.getElementById('n-text').value='';openModal('noteModal');}
+function saveNote(){
+  const tx=document.getElementById('n-text').value.trim();
+  if(!tx){closeModal('noteModal');return;}
+  EVT.push({t:Date.now(),kind:'note',label:'メモ',detail:tx});
+  closeModal('noteModal');persist();renderTimeline();toast('メモを記録');
+}
+function openModal(id){document.getElementById(id).classList.add('show');}
+function closeModal(id){document.getElementById(id).classList.remove('show');}
+
+/* ====================== タイムライン描画 ====================== */
+async function renderTimeline(){
+  const tl=document.getElementById('timeline');
+  const sorted=[...EVT].sort((a,b)=>b.t-a.t);
+  const photos=await idbAll('photos');
+  const pmap={}; photos.forEach(p=>pmap[p.id]=p);
+  tl.innerHTML='';
+  for(const e of sorted){
+    const div=document.createElement('div'); div.className='item';
+    const rel=fmtDur(Math.floor((e.t-CASE.startedAt)/1000));
+    let body='';
+    if(e.kind==='photo'){
+      const p=pmap[e.photoId];
+      const url=p?URL.createObjectURL(p.blob):'';
+      body=`<span class="tag photo">写真</span>${url?`<img src="${url}">`:'(画像なし)'}`;
+    }else{
+      const tag=e.kind==='drug'?'drug':e.kind==='note'?'note':'event';
+      const tn=e.kind==='drug'?'投薬':e.kind==='note'?'メモ':'イベント';
+      body=`<span class="tag ${tag}">${tn}</span><b>${e.label}</b>`+(e.detail?`<div class="det">${escapeHtml(e.detail)}</div>`:'');
+    }
+    div.innerHTML=`<div class="t">+${rel}</div><div class="c">${body}</div><button class="del" onclick="delEvt(${e.t})">削除</button>`;
+    tl.appendChild(div);
+  }
+  document.getElementById('counts').textContent=`(写真${EVT.filter(e=>e.kind==='photo').length} / 記録${EVT.filter(e=>e.kind!=='photo').length})`;
+}
+async function delEvt(t){
+  if(!confirm('この記録を削除しますか？'))return;
+  const e=EVT.find(x=>x.t===t);
+  if(e&&e.kind==='photo'&&e.photoId){const tx=db.transaction('photos','readwrite');tx.objectStore('photos').delete(e.photoId);}
+  EVT=EVT.filter(x=>x.t!==t);
+  await persist();renderTimeline();
+}
+
+/* ====================== 終了・書き出し ====================== */
+async function finishCase(){
+  clearInterval(timerId);
+  stopCamera();
+  const ph=EVT.filter(e=>e.kind==='photo').length;
+  document.getElementById('doneInfo').innerHTML=
+    `<b>${CASE.name||'(無名)'}</b> / ${CASE.species} ${CASE.weight||''}kg<br>`+
+    `${CASE.proc||''}<br><span class="muted">開始 ${fmtJp(CASE.startedAt)}<br>`+
+    `写真 ${ph}枚 ・ 記録 ${EVT.filter(e=>e.kind!=='photo').length}件</span>`;
+  show('s-done');
+}
+function backToRec(){ show('s-rec'); nextCaptureAt=Date.now()+CASE.interval*1000; startTimer(); requestWakeLock(); }
+
+function recordsCsv(){
+  let rows=[['経過','時刻','種別','内容','詳細']];
+  [...EVT].sort((a,b)=>a.t-b.t).forEach(e=>{
+    const kn=e.kind==='photo'?'写真':e.kind==='drug'?'投薬':e.kind==='note'?'メモ':'イベント';
+    rows.push([ '+'+fmtDur(Math.floor((e.t-CASE.startedAt)/1000)), fmtJp(e.t), kn, e.label||'', e.detail||(e.kind==='photo'?photoFileName(e):'') ]);
+  });
+  const head=`患者,${csv(CASE.name)}\n動物種,${CASE.species}\n体重(kg),${CASE.weight}\n術式,${csv(CASE.proc)}\n担当,${csv(CASE.staff)}\n開始,${fmtJp(CASE.startedAt)}\n\n`;
+  return head+rows.map(r=>r.map(csv).join(',')).join('\n');
+}
+function downloadRecords(){
+  const blob=new Blob(['﻿'+recordsCsv()],{type:'text/csv'});
+  triggerDownload(blob, safeName()+'_records.csv');
+}
+
+let photoIndex={};
+function photoFileName(e){
+  // 連番は撮影時刻順
+  return photoIndex[e.photoId]||'photo.jpg';
+}
+async function downloadZip(){
+  toast('ZIPを作成中…');
+  const photos=(await idbAll('photos')).sort((a,b)=>a.t-b.t);
+  // 連番割り当て
+  photoIndex={};
+  photos.forEach((p,i)=>{ photoIndex[p.id]=String(i+1).padStart(3,'0')+'_'+fmtHM(p.t)+'.jpg'; });
+  const files=[];
+  for(const p of photos){
+    const buf=new Uint8Array(await p.blob.arrayBuffer());
+    files.push({name:'photos/'+photoIndex[p.id], data:buf});
+  }
+  files.push({name:'records.csv', data:strBytes('﻿'+recordsCsv())});
+  const zip=makeZip(files);
+  triggerDownload(new Blob([zip],{type:'application/zip'}), safeName()+'.zip');
+}
+
+async function deleteAndNew(){
+  if(!confirm('この症例の写真・記録を端末から完全に削除します。よろしいですか？'))return;
+  await idbClear('photos'); await idbClear('meta');
+  location.reload();
+}
+
+/* ====================== ZIP (store方式・無圧縮) ====================== */
+function makeZip(files){
+  const enc=[]; const central=[]; let offset=0;
+  const chunks=[];
+  for(const f of files){
+    const nameBytes=strBytes(f.name);
+    const crc=crc32(f.data);
+    const size=f.data.length;
+    // local file header
+    const lh=new Uint8Array(30+nameBytes.length);
+    const dv=new DataView(lh.buffer);
+    dv.setUint32(0,0x04034b50,true);
+    dv.setUint16(4,20,true); dv.setUint16(6,0,true); dv.setUint16(8,0,true);
+    dv.setUint16(10,0,true); dv.setUint16(12,0,true);
+    dv.setUint32(14,crc,true); dv.setUint32(18,size,true); dv.setUint32(22,size,true);
+    dv.setUint16(26,nameBytes.length,true); dv.setUint16(28,0,true);
+    lh.set(nameBytes,30);
+    chunks.push(lh,f.data);
+    // central dir
+    const ch=new Uint8Array(46+nameBytes.length);
+    const cv=new DataView(ch.buffer);
+    cv.setUint32(0,0x02014b50,true);
+    cv.setUint16(4,20,true); cv.setUint16(6,20,true);
+    cv.setUint16(8,0,true); cv.setUint16(10,0,true);
+    cv.setUint16(12,0,true); cv.setUint16(14,0,true);
+    cv.setUint32(16,crc,true); cv.setUint32(20,size,true); cv.setUint32(24,size,true);
+    cv.setUint16(28,nameBytes.length,true); cv.setUint16(30,0,true); cv.setUint16(32,0,true);
+    cv.setUint16(34,0,true); cv.setUint16(36,0,true); cv.setUint32(38,0,true);
+    cv.setUint32(42,offset,true);
+    ch.set(nameBytes,46);
+    central.push(ch);
+    offset+=lh.length+size;
+  }
+  let cdSize=0; central.forEach(c=>cdSize+=c.length);
+  const cdOffset=offset;
+  central.forEach(c=>chunks.push(c));
+  const eocd=new Uint8Array(22); const ev=new DataView(eocd.buffer);
+  ev.setUint32(0,0x06054b50,true);
+  ev.setUint16(8,files.length,true); ev.setUint16(10,files.length,true);
+  ev.setUint32(12,cdSize,true); ev.setUint32(16,cdOffset,true);
+  chunks.push(eocd);
+  // 結合
+  let total=0; chunks.forEach(c=>total+=c.length);
+  const out=new Uint8Array(total); let pos=0;
+  chunks.forEach(c=>{out.set(c,pos);pos+=c.length;});
+  return out;
+}
+const CRCTAB=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c;}return t;})();
+function crc32(buf){let c=0xFFFFFFFF;for(let i=0;i<buf.length;i++)c=CRCTAB[(c^buf[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+
+/* ====================== ユーティリティ ====================== */
+function strBytes(s){return new TextEncoder().encode(s);}
+function csv(v){v=(v==null?'':String(v));return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+function escapeHtml(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function pad(n){return String(n).padStart(2,'0');}
+function fmtDur(s){s=Math.max(0,s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),sec=s%60;return h>0?`${h}:${pad(m)}:${pad(sec)}`:`${m}:${pad(sec)}`;}
+function fmtJp(t){const d=new Date(t);return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;}
+function fmtHM(t){const d=new Date(t);return `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;}
+function fmtStamp(d){return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;}
+function safeName(){return ((CASE.name||'case')+'_'+fmtStamp(new Date(CASE.startedAt))).replace(/[^\w\-一-龠ぁ-んァ-ヶ]/g,'_');}
+function triggerDownload(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
+
+/* ====================== 画面ロック防止 ====================== */
+async function requestWakeLock(){
+  try{ if('wakeLock'in navigator){ wakeLock=await navigator.wakeLock.request('screen'); } }catch(e){}
+}
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&CASE&&document.getElementById('s-rec').classList.contains('active'))requestWakeLock(); });
+</script>
+</body>
+</html>
