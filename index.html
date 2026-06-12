@@ -131,6 +131,11 @@
   .galempty{color:var(--sub);text-align:center;padding:30px 10px;font-size:14px}
 
   /* config editor rows */
+  .draghandle{flex:0 0 auto;width:34px;height:38px;display:flex;align-items:center;justify-content:center;
+    color:var(--sub);font-size:20px;cursor:grab;touch-action:none;user-select:none;
+    background:var(--panel2);border:1px solid var(--line);border-radius:8px}
+  .draghandle:active{cursor:grabbing}
+  .dragging{opacity:.5;outline:2px dashed var(--accent);outline-offset:2px;border-radius:10px}
   .editrow{display:flex;gap:6px;align-items:center;margin-bottom:8px}
   .editrow input{padding:9px}
   .editrow .ord{display:flex;flex-direction:column;gap:2px}
@@ -159,7 +164,6 @@
 
 <!-- ============ START SCREEN ============ -->
 <section id="s-start" class="screen">
-  <button class="gearlink" onclick="openConfig()" title="ボタン編集">⚙️</button>
   <h1>🐾 SomLog Lite</h1>
   <div class="card">
     <div class="muted">廉価版・スマホ記録（写真は端末内に保存）</div>
@@ -191,6 +195,7 @@
     </select>
     <button class="btn" onclick="startCase()">麻酔記録を開始</button>
   </div>
+  <button class="btn ghost" style="margin-top:18px" onclick="openConfig()">⚙️ ボタンを編集（イベント／投薬の追加・並べ替え）</button>
 </section>
 
 <!-- ============ RECORD SCREEN ============ -->
@@ -809,18 +814,18 @@ function renderConfigEditors(events,drugs){
 }
 function drawEventRows(){
   document.getElementById('evEditList').innerHTML=cfgEvents.map((e,i)=>`
-    <div class="editrow">
+    <div class="editrow" data-kind="ev" data-idx="${i}">
+      <div class="draghandle" onpointerdown="startDrag('ev',${i},event)" title="ドラッグで並べ替え">≡</div>
       <input value="${escapeAttr(e)}" oninput="cfgEvents[${i}]=this.value">
-      <div class="ord"><button onclick="moveEv(${i},-1)">▲</button><button onclick="moveEv(${i},1)">▼</button></div>
       <button class="rm" onclick="rmEv(${i})">✕</button>
     </div>`).join('');
 }
 function drawDrugRows(){
   document.getElementById('drugEditList').innerHTML=cfgDrugs.map((d,i)=>`
-    <div class="drugedit">
+    <div class="drugedit" data-kind="drug" data-idx="${i}">
       <div class="top">
+        <div class="draghandle" onpointerdown="startDrag('drug',${i},event)" title="ドラッグで並べ替え">≡</div>
         <input value="${escapeAttr(d.n)}" placeholder="薬剤名" oninput="cfgDrugs[${i}].n=this.value">
-        <div class="ord"><button onclick="moveDrug(${i},-1)">▲</button><button onclick="moveDrug(${i},1)">▼</button></div>
         <button class="rm" onclick="rmDrug(${i})">✕</button>
       </div>
       <div class="row">
@@ -832,10 +837,45 @@ function drawDrugRows(){
 }
 function addEventRow(){ cfgEvents.push('新規イベント'); drawEventRows(); }
 function rmEv(i){ cfgEvents.splice(i,1); drawEventRows(); }
-function moveEv(i,d){ const j=i+d; if(j<0||j>=cfgEvents.length)return; [cfgEvents[i],cfgEvents[j]]=[cfgEvents[j],cfgEvents[i]]; drawEventRows(); }
 function addDrugRow(){ cfgDrugs.push({n:'新規薬剤',u:'mg/kg',d:1,r:'IV,IM,SC'}); drawDrugRows(); }
 function rmDrug(i){ cfgDrugs.splice(i,1); drawDrugRows(); }
-function moveDrug(i,d){ const j=i+d; if(j<0||j>=cfgDrugs.length)return; [cfgDrugs[i],cfgDrugs[j]]=[cfgDrugs[j],cfgDrugs[i]]; drawDrugRows(); }
+
+/* ---- ドラッグ並べ替え（タッチ/マウス両対応） ---- */
+let dragState=null;
+function dragArr(kind){ return kind==='ev'?cfgEvents:cfgDrugs; }
+function dragRedraw(kind){ kind==='ev'?drawEventRows():drawDrugRows(); }
+function dragRowSel(kind){ return kind==='ev'?'#evEditList .editrow':'#drugEditList .drugedit'; }
+function markDragging(kind,idx){ const rows=document.querySelectorAll(dragRowSel(kind)); if(rows[idx])rows[idx].classList.add('dragging'); }
+function startDrag(kind,idx,ev){
+  ev.preventDefault();
+  dragState={kind,idx};
+  markDragging(kind,idx);
+  document.addEventListener('pointermove',onDragMove);
+  document.addEventListener('pointerup',endDrag,{once:true});
+  document.addEventListener('pointercancel',endDrag,{once:true});
+}
+function onDragMove(e){
+  if(!dragState)return;
+  const rows=[...document.querySelectorAll(dragRowSel(dragState.kind))];
+  const y=e.clientY;
+  let target=rows.length-1;
+  for(let k=0;k<rows.length;k++){
+    const r=rows[k].getBoundingClientRect();
+    if(y < r.top + r.height/2){ target=k; break; }
+  }
+  if(target!==dragState.idx){
+    const arr=dragArr(dragState.kind);
+    const [item]=arr.splice(dragState.idx,1);
+    arr.splice(target,0,item);
+    dragState.idx=target;
+    dragRedraw(dragState.kind);
+    markDragging(dragState.kind,target);
+  }
+}
+function endDrag(){
+  document.removeEventListener('pointermove',onDragMove);
+  if(dragState){ const k=dragState.kind; dragState=null; dragRedraw(k); }
+}
 async function saveConfig(){
   EVENTS=cfgEvents.map(s=>String(s).trim()).filter(Boolean);
   DRUGS=cfgDrugs.filter(d=>d.n&&String(d.n).trim()).map(d=>({n:d.n.trim(),u:(d.u||'').trim()||'mg/kg',d:d.d||0,r:(d.r||'IV').trim()}));
