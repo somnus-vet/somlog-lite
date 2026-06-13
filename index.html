@@ -93,7 +93,7 @@
   .item .c .det{color:var(--sub);font-size:13px}
   .item img{width:54px;height:42px;object-fit:cover;border-radius:6px;cursor:pointer}
   .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:6px;margin-right:6px;vertical-align:middle}
-  .tag.photo{background:#2c4a63}.tag.drug{background:#3a5a2c}.tag.event{background:#4a3a63}.tag.note{background:#5a4a2c}
+  .tag.photo{background:#2c4a63}.tag.drug{background:#3a5a2c}.tag.event{background:#4a3a63}.tag.note{background:#5a4a2c}.tag.surg{background:#8a3a3a}
   .chev{color:var(--sub);font-size:18px;padding:4px 2px}
 
   /* modal */
@@ -225,6 +225,7 @@
     <button class="btn ghost small" id="camBtn" onclick="toggleCamera()">📷 カメラを起動</button>
     <button class="btn ghost small" onclick="switchCamera()">🔄 内/外切替</button>
   </div>
+  <button class="btn small" style="margin-top:8px;background:#7a4a4a" onclick="captureIntraop()">🔬 術中写真を撮る（高画質・カルテ用）</button>
   <button class="btn ghost small" style="margin-top:8px" onclick="openGallery()">🖼 撮影した写真を見る <span id="galCount" class="muted"></span></button>
 
   <h2>イベント記録</h2>
@@ -253,7 +254,7 @@
   <button class="btn ghost" onclick="downloadRecords()">📄 記録だけ（CSV）をダウンロード</button>
   <button class="btn ghost" onclick="backToRec()">← 記録画面へ戻る（追記する）</button>
   <button class="btn danger" style="margin-top:24px" onclick="deleteAndNew()">🗑 この症例を削除して新規開始</button>
-  <div class="hint" style="margin-top:10px">ZIP内に写真（連番＋時刻）と records.csv が入ります。ダウンロード後にカルテへ添付・保管してください。削除するまでは端末内に残り、いつでも再開できます。</div>
+  <div class="hint" style="margin-top:10px">ZIP内は写真（ファイル名＝撮影時刻）が「モニター写真／術中写真」フォルダに分かれ、records.csv が入ります。ダウンロード後にカルテへ添付・保管してください。削除するまでは端末内に残り、いつでも再開できます。</div>
 </section>
 
 <!-- ============ CONFIG SCREEN（ボタン編集） ============ -->
@@ -387,6 +388,7 @@ let EVENTS = DEFAULT_EVENTS.slice();
 let DRUGS = DEFAULT_DRUGS.map(d=>({...d}));
 
 const QUALITY = { low:{w:900,q:0.5}, mid:{w:1280,q:0.6}, high:{w:1920,q:0.72} };
+const INTRAOP_Q = {w:1920,q:0.85};   // 術中写真（カルテ用）は常に高画質固定
 
 /* ====================== 状態 ====================== */
 let CASE=null;          // {id,name,species,weight,proc,staff,startedAt,interval,quality,lastChange,lastExport}
@@ -567,23 +569,26 @@ function stopCamera(){
 }
 async function switchCamera(){ facing=(facing==='environment')?'user':'environment'; if(stream){stopCamera();await startCamera();} }
 
-async function capturePhoto(){
+async function capturePhoto(){ return doCapture('monitor', QUALITY[CASE.quality]||QUALITY.mid, true); }
+async function captureIntraop(){ return doCapture('intraop', INTRAOP_Q, false); }
+async function doCapture(mode, cfg, resetTimer){
   if(!stream){ toast('先にカメラを起動してください'); await startCamera(); return; }
   const v=document.getElementById('video');
-  const cfg=QUALITY[CASE.quality]||QUALITY.mid;
   const ratio=(v.videoHeight/v.videoWidth)||0.75;
   const w=Math.min(cfg.w, v.videoWidth||cfg.w), h=Math.round(w*ratio);
   const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
   cv.getContext('2d').drawImage(v,0,0,w,h);
   const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',cfg.q));
   const t=Date.now(), id='p_'+t;
-  await idbPut('photos',{id,blob,t});
-  EVT.push({eid:newEid(),t,kind:'photo',label:'撮影',photoId:id});
+  await idbPut('photos',{id,blob,t,mode});
+  EVT.push({eid:newEid(),t,kind:'photo',mode,label:mode==='intraop'?'術中写真':'撮影',photoId:id});
   lastPhotoId=id;
-  nextCaptureAt=Date.now()+CASE.interval*1000;
-  document.getElementById('dueBanner').classList.remove('show','late');
+  if(resetTimer){   // モニター撮影だけ次の撮影タイマーをリセット（術中写真は周期に影響させない）
+    nextCaptureAt=Date.now()+CASE.interval*1000;
+    document.getElementById('dueBanner').classList.remove('show','late');
+  }
   await persist(true); renderTimeline(); refreshLastThumb();
-  toast('📸 保存しました ('+Math.round(blob.size/1024)+'KB・'+w+'px)');
+  toast((mode==='intraop'?'🔬 術中写真を保存 ':'📸 保存しました ')+'('+Math.round(blob.size/1024)+'KB・'+w+'px)');
 }
 function refreshLastThumb(){
   const th=document.getElementById('lastThumb');
@@ -641,7 +646,8 @@ async function renderTimeline(){
     if(e.kind==='photo'){
       const p=pmap[e.photoId];
       const img = p ? `<img src="${photoURL(p)}" onclick="openViewer('${e.photoId}')">` : '(画像なし)';
-      div.innerHTML=`${tcell}<div class="c"><span class="tag photo">写真</span>${img}</div>`;
+      const isOp=e.mode==='intraop';
+      div.innerHTML=`${tcell}<div class="c"><span class="tag ${isOp?'surg':'photo'}">${isOp?'術中':'写真'}</span>${img}</div>`;
     }else{
       const tag=e.kind==='drug'?'drug':e.kind==='note'?'note':'event';
       const tn=e.kind==='drug'?'投薬':e.kind==='note'?'メモ':'イベント';
@@ -709,7 +715,7 @@ async function openGallery(){
     const photos=await idbAll('photos'); const pmap={}; photos.forEach(p=>pmap[p.id]=p);
     grid.innerHTML=list.map(e=>{
       const p=pmap[e.photoId]; const src=p?photoURL(p):'';
-      return `<div class="galcell" onclick="openViewer('${e.photoId}')">${src?`<img src="${src}">`:''}<div class="gt">${fmtClock(e.t)}</div></div>`;
+      return `<div class="galcell" onclick="openViewer('${e.photoId}')">${src?`<img src="${src}">`:''}<div class="gt">${e.mode==='intraop'?'🔬':''}${fmtClock(e.t)}</div></div>`;
     }).join('');
   }
   openModal('galleryModal');
@@ -730,7 +736,7 @@ async function showViewerAt(idx){
   viewerPhotoId=id;
   document.getElementById('viewerImg').src=photoURL(p);
   document.getElementById('viewerInfo').textContent=
-    `${idx+1}/${viewerList.length} ・ ${fmtClock(p.t)} ・ +${fmtDur(Math.floor((p.t-CASE.startedAt)/1000))} ・ ${Math.round(p.blob.size/1024)}KB`;
+    (p.mode==='intraop'?'🔬術中写真 ・ ':'')+`${idx+1}/${viewerList.length} ・ ${fmtClock(p.t)} ・ +${fmtDur(Math.floor((p.t-CASE.startedAt)/1000))} ・ ${Math.round(p.blob.size/1024)}KB`;
 }
 function viewerStep(d){ const n=viewerIdx+d; if(n>=0&&n<viewerList.length) showViewerAt(n); }
 function closeViewer(){ document.getElementById('viewer').classList.remove('show'); viewerPhotoId=null; }
@@ -769,7 +775,7 @@ function backToRec(){ show('s-rec'); nextCaptureAt=Date.now()+CASE.interval*1000
 function recordsCsv(){
   let rows=[['経過','時刻','種別','内容','詳細']];
   [...EVT].sort((a,b)=>a.t-b.t).forEach(e=>{
-    const kn=e.kind==='photo'?'写真':e.kind==='drug'?'投薬':e.kind==='note'?'メモ':'イベント';
+    const kn=e.kind==='photo'?(e.mode==='intraop'?'術中写真':'写真'):e.kind==='drug'?'投薬':e.kind==='note'?'メモ':'イベント';
     rows.push([ '+'+fmtDur(Math.floor((e.t-CASE.startedAt)/1000)), fmtJp(e.t), kn, e.label||'', e.detail||(e.kind==='photo'?(photoIndex[e.photoId]||''):'') ]);
   });
   const head=`患者,${csv(CASE.name)}\n動物種,${CASE.species}\n体重(kg),${CASE.weight}\n術式,${csv(CASE.proc)}\n担当,${csv(CASE.staff)}\n開始,${fmtJp(CASE.startedAt)}\n\n`;
@@ -783,9 +789,15 @@ let photoIndex={};
 async function downloadZip(){
   toast('ZIPを作成中…');
   const photos=(await idbAll('photos')).sort((a,b)=>a.t-b.t);
-  photoIndex={}; photos.forEach((p,i)=>{ photoIndex[p.id]=String(i+1).padStart(3,'0')+'_'+fmtHM(p.t)+'.jpg'; });
+  photoIndex={}; const usedName={};
+  photos.forEach(p=>{                    // ファイル名＝撮影時刻。モニター/術中でフォルダ分け、同時刻は連番で衝突回避
+    const dir = p.mode==='intraop' ? '術中写真/' : 'モニター写真/';
+    let base=fmtHM(p.t), name=dir+base+'.jpg', n=2;
+    while(usedName[name]){ name=dir+base+'_'+(n++)+'.jpg'; }
+    usedName[name]=1; photoIndex[p.id]=name;
+  });
   const files=[];
-  for(const p of photos){ files.push({name:'photos/'+photoIndex[p.id], data:new Uint8Array(await p.blob.arrayBuffer())}); }
+  for(const p of photos){ files.push({name:photoIndex[p.id], data:new Uint8Array(await p.blob.arrayBuffer())}); }
   files.push({name:'records.csv', data:strBytes('﻿'+recordsCsv())});
   triggerDownload(new Blob([makeZip(files)],{type:'application/zip'}), safeName()+'.zip');
   markExported('ZIPを保存しました');
@@ -895,12 +907,12 @@ function makeZip(files){
   for(const f of files){
     const nameBytes=strBytes(f.name); const crc=crc32(f.data); const size=f.data.length;
     const lh=new Uint8Array(30+nameBytes.length); const dv=new DataView(lh.buffer);
-    dv.setUint32(0,0x04034b50,true); dv.setUint16(4,20,true); dv.setUint16(6,0,true); dv.setUint16(8,0,true);
+    dv.setUint32(0,0x04034b50,true); dv.setUint16(4,20,true); dv.setUint16(6,0x0800,true); dv.setUint16(8,0,true);
     dv.setUint16(10,0,true); dv.setUint16(12,0,true); dv.setUint32(14,crc,true); dv.setUint32(18,size,true); dv.setUint32(22,size,true);
     dv.setUint16(26,nameBytes.length,true); dv.setUint16(28,0,true); lh.set(nameBytes,30);
     chunks.push(lh,f.data);
     const ch=new Uint8Array(46+nameBytes.length); const cv=new DataView(ch.buffer);
-    cv.setUint32(0,0x02014b50,true); cv.setUint16(4,20,true); cv.setUint16(6,20,true); cv.setUint16(8,0,true); cv.setUint16(10,0,true);
+    cv.setUint32(0,0x02014b50,true); cv.setUint16(4,20,true); cv.setUint16(6,20,true); cv.setUint16(8,0x0800,true); cv.setUint16(10,0,true);
     cv.setUint16(12,0,true); cv.setUint16(14,0,true); cv.setUint32(16,crc,true); cv.setUint32(20,size,true); cv.setUint32(24,size,true);
     cv.setUint16(28,nameBytes.length,true); cv.setUint16(30,0,true); cv.setUint16(32,0,true); cv.setUint16(34,0,true); cv.setUint16(36,0,true); cv.setUint32(38,0,true); cv.setUint32(42,offset,true);
     ch.set(nameBytes,46); central.push(ch); offset+=lh.length+size;
